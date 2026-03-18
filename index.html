@@ -1579,8 +1579,8 @@ async function fetchLiveNSE(isManual = false) {
   /* ── TIER 0: GitHub Actions auto-committed JSON (works for EVERYONE) ── */
   if (!success) {
     const dataSources = [
-      './data/latest.json',                                                         // GitHub Pages / same origin
       'https://raw.githubusercontent.com/SuyashB03/fii-dii/main/data/latest.json',  // Direct raw (CORS-safe)
+      './data/latest.json',                                                         // GitHub Pages / same origin
     ];
     for (const src of dataSources) {
       try {
