@@ -1580,7 +1580,7 @@ async function fetchLiveNSE(isManual = false) {
   if (!success) {
     const dataSources = [
       './data/latest.json',                                                         // GitHub Pages / same origin
-      'https://raw.githubusercontent.com/MrChartist/fii-dii-data/main/data/latest.json',  // Direct raw (CORS-safe)
+      'https://raw.githubusercontent.com/SuyashB03/fii-dii/main/data/latest.json',  // Direct raw (CORS-safe)
     ];
     for (const src of dataSources) {
       try {
