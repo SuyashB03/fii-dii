@@ -1455,13 +1455,13 @@ function renderDashboard() {
     }
 
     // Sentiment heuristic
-    const futNet = latest.fii_idx_fut_long - latest.fii_idx_fut_short;
-    const callNet = latest.fii_idx_call_long - latest.fii_idx_call_short;
-    const putNet = latest.fii_idx_put_long - latest.fii_idx_put_short;
+    const sentFutNet  = latest.fii_idx_fut_long - latest.fii_idx_fut_short;
+    const sentCallNet = latest.fii_idx_call_long - latest.fii_idx_call_short;
+    const sentPutNet  = latest.fii_idx_put_long - latest.fii_idx_put_short;
     let score = 0;
-    if (futNet > 10000) score++; if (futNet < -10000) score--;
-    if (callNet > 50000) score++; if (callNet < -50000) score--;
-    if (putNet > 50000) score--; if (putNet < -50000) score++; // Long Puts = Bearish
+    if (sentFutNet > 10000) score++; if (sentFutNet < -10000) score--;
+    if (sentCallNet > 50000) score++; if (sentCallNet < -50000) score--;
+    if (sentPutNet > 50000) score--; if (sentPutNet < -50000) score++; // Long Puts = Bearish
     
     const sBadge = document.getElementById('faoSentiment');
     if (score >= 2) { sBadge.innerText = 'Highly Bullish'; sBadge.className = 'mom-badge mb-bull'; }
