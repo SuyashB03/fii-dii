@@ -225,7 +225,7 @@ tr:last-child td { border-bottom: none; }
         </button>
         <div class="status-pill err" id="sPill">
           <div class="status-dot"></div>
-          <span id="sTxt">LOCAL ARCHIVE (Mar 13)</span>
+          <span id="sTxt">Syncing...</span>
         </div>
       </div>
 
@@ -1584,7 +1584,7 @@ async function fetchLiveNSE(isManual = false) {
     ];
     for (const src of dataSources) {
       try {
-        const res = await fetch(`${src}?t=${Date.now()}`, { signal: AbortSignal.timeout(6000) });
+        const res = await fetch(`${src}?t=${Date.now()}`, { signal: AbortSignal.timeout(12000) });
         if (res.ok) {
           const d = await res.json();
           if (d.date && d.fii_net !== undefined) {
@@ -1660,14 +1660,14 @@ async function fetchLiveNSE(isManual = false) {
 
   /* ── FAIL ── */
   if (!success) {
-    console.warn('[SYNC] ⚠️ All sources failed — showing local archive.');
+    console.warn('[SYNC] ⚠️ All sources failed — retrying in 15 seconds.');
     const sPill = document.getElementById('sPill');
     const sTxt  = document.getElementById('sTxt');
     if (sPill) { sPill.className = 'status-pill err'; }
-    // Show 'start server' tip only when actually on localhost; GitHub visitors just see LOCAL ARCHIVE
-    const failMsg = (isManual && IS_LOCAL) ? 'LOCAL SERVER OFFLINE — Start server.py' : 'LOCAL ARCHIVE (Mar 13)';
-    if (sTxt) { sTxt.innerHTML = failMsg; }
-    scheduleNextRefresh(); // retry anyway
+    if (sTxt) { sTxt.innerHTML = isManual ? 'Sync failed — retrying...' : 'Updating data...'; }
+    // Retry quickly on failure instead of waiting 2 minutes
+    if (refreshTimer) clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => fetchLiveNSE(false), 15000);
   }
 
   if (isManual && btn) {
@@ -1682,6 +1682,8 @@ window.addEventListener('DOMContentLoaded', () => {
   fetchLiveNSE();
   fetchFnoData();
   startCountdown();
+  // Second attempt after 4 seconds in case first fetch is slow
+  setTimeout(() => { if (document.getElementById('sPill').className !== 'status-pill live') fetchLiveNSE(); }, 4000);
 });
 
 // ── F&O Participant Data Fetch ───────────────────────────────────────────────
@@ -1963,17 +1965,17 @@ function renderFnoAnnualPanel() {
     const netStr = net !== null ? (bull ? '+' : '') + Math.round(net).toLocaleString('en-IN') : '—';
     const longStr  = r.long  !== null ? Math.round(r.long).toLocaleString('en-IN')  : '—';
     const shortStr = r.short !== null ? Math.round(r.short).toLocaleString('en-IN') : '—';
-    return \`<tr style="border-bottom:1px solid var(--l2);">
-      <td style="padding:7px 8px; font-weight:700; color:var(--t1);">\${r.y}</td>
-      <td style="padding:7px 8px; text-align:right; color:var(--green);">\${longStr}</td>
-      <td style="padding:7px 8px; text-align:right; color:var(--red);">\${shortStr}</td>
-      <td style="padding:7px 8px; text-align:right; font-weight:800; color:\${net !== null ? (bull ? 'var(--green)' : 'var(--red)') : 'var(--t4)'};">\${netStr}</td>
+    return `<tr style="border-bottom:1px solid var(--l2);">
+      <td style="padding:7px 8px; font-weight:700; color:var(--t1);">${r.y}</td>
+      <td style="padding:7px 8px; text-align:right; color:var(--green);">${longStr}</td>
+      <td style="padding:7px 8px; text-align:right; color:var(--red);">${shortStr}</td>
+      <td style="padding:7px 8px; text-align:right; font-weight:800; color:${net !== null ? (bull ? 'var(--green)' : 'var(--red)') : 'var(--t4)'};">${netStr}</td>
       <td style="padding:7px 8px; text-align:right;">
-        <span style="font-size:10px; font-weight:700; padding:2px 8px; border-radius:4px; background:\${net !== null ? (bull ? 'rgba(0,208,158,0.15)' : 'rgba(251,54,64,0.15)') : 'transparent'}; color:\${net !== null ? (bull ? 'var(--green)' : 'var(--red)') : 'var(--t4)'};">
-          \${net !== null ? (bull ? 'NET LONG' : 'NET SHORT') : 'LIVE'}
+        <span style="font-size:10px; font-weight:700; padding:2px 8px; border-radius:4px; background:${net !== null ? (bull ? 'rgba(0,208,158,0.15)' : 'rgba(251,54,64,0.15)') : 'transparent'}; color:${net !== null ? (bull ? 'var(--green)' : 'var(--red)') : 'var(--t4)'};">
+          ${net !== null ? (bull ? 'NET LONG' : 'NET SHORT') : 'LIVE'}
         </span>
       </td>
-    </tr>\`;
+    </tr>`;
   }).join('');
 }
 
@@ -1984,8 +1986,8 @@ async function fetchFnoRecent() {
   // Use participant OI historical endpoint
   const histUrl = 'https://www.nseindia.com/api/historicalParticipant-OI-drv?instrumentType=FUTIDX&dataType=historical';
   const proxies = [
-    \`https://corsproxy.io/?\${encodeURIComponent(histUrl)}\`,
-    \`https://api.allorigins.win/get?url=\${encodeURIComponent(histUrl)}\`,
+    `https://corsproxy.io/?${encodeURIComponent(histUrl)}`,
+    `https://api.allorigins.win/get?url=${encodeURIComponent(histUrl)}`,
   ];
 
   let rows = [];
@@ -2019,7 +2021,7 @@ async function fetchFnoRecent() {
       rows = [{ date: today, long: 0, short: 0, net: 0 }];
     }
   } else {
-    statusEl.innerText = \`Showing \${rows.length} sessions · Source: NSE participant OI\`;
+    statusEl.innerText = `Showing ${rows.length} sessions · Source: NSE participant OI`;
   }
 
   renderFnoRecentChart(rows);
@@ -2068,12 +2070,12 @@ function renderFnoRecentChart(rows) {
   const tbody = document.getElementById('fnoRecentBody');
   tbody.innerHTML = rows.map(r => {
     const bull = r.net >= 0;
-    return \`<tr style="border-bottom:1px solid var(--l2);">
-      <td style="padding:6px 8px; color:var(--t2);">\${r.date}</td>
-      <td style="padding:6px 8px; text-align:right; color:var(--green);">\${r.long ? Math.round(r.long).toLocaleString('en-IN') : '—'}</td>
-      <td style="padding:6px 8px; text-align:right; color:var(--red);">\${r.short ? Math.round(r.short).toLocaleString('en-IN') : '—'}</td>
-      <td style="padding:6px 8px; text-align:right; font-weight:700; color:\${bull ? 'var(--green)' : 'var(--red)'};">\${(bull ? '+' : '') + Math.round(r.net).toLocaleString('en-IN')}</td>
-    </tr>\`;
+    return `<tr style="border-bottom:1px solid var(--l2);">
+      <td style="padding:6px 8px; color:var(--t2);">${r.date}</td>
+      <td style="padding:6px 8px; text-align:right; color:var(--green);">${r.long ? Math.round(r.long).toLocaleString('en-IN') : '—'}</td>
+      <td style="padding:6px 8px; text-align:right; color:var(--red);">${r.short ? Math.round(r.short).toLocaleString('en-IN') : '—'}</td>
+      <td style="padding:6px 8px; text-align:right; font-weight:700; color:${bull ? 'var(--green)' : 'var(--red)'};">${(bull ? '+' : '') + Math.round(r.net).toLocaleString('en-IN')}</td>
+    </tr>`;
   }).join('');
 }
 
@@ -2176,17 +2178,17 @@ function renderStkFnoAnnualPanel() {
     const netStr  = net !== null ? (bull ? '+' : '') + Math.round(net).toLocaleString('en-IN') : '—';
     const longStr  = r.long  !== null ? Math.round(r.long).toLocaleString('en-IN')  : '—';
     const shortStr = r.short !== null ? Math.round(r.short).toLocaleString('en-IN') : '—';
-    return \`<tr style="border-bottom:1px solid var(--l2);">
-      <td style="padding:7px 8px; font-weight:700; color:var(--t1);">\${r.y}</td>
-      <td style="padding:7px 8px; text-align:right; color:var(--green);">\${longStr}</td>
-      <td style="padding:7px 8px; text-align:right; color:var(--red);">\${shortStr}</td>
-      <td style="padding:7px 8px; text-align:right; font-weight:800; color:\${net !== null ? (bull ? 'var(--green)' : 'var(--red)') : 'var(--t4)'};">\${netStr}</td>
+    return `<tr style="border-bottom:1px solid var(--l2);">
+      <td style="padding:7px 8px; font-weight:700; color:var(--t1);">${r.y}</td>
+      <td style="padding:7px 8px; text-align:right; color:var(--green);">${longStr}</td>
+      <td style="padding:7px 8px; text-align:right; color:var(--red);">${shortStr}</td>
+      <td style="padding:7px 8px; text-align:right; font-weight:800; color:${net !== null ? (bull ? 'var(--green)' : 'var(--red)') : 'var(--t4)'};">${netStr}</td>
       <td style="padding:7px 8px; text-align:right;">
-        <span style="font-size:10px; font-weight:700; padding:2px 8px; border-radius:4px; background:\${net !== null ? (bull ? 'rgba(0,208,158,0.15)' : 'rgba(251,54,64,0.15)') : 'transparent'}; color:\${net !== null ? (bull ? 'var(--green)' : 'var(--red)') : 'var(--t4)'};">
-          \${net !== null ? (bull ? 'NET LONG' : 'NET SHORT') : 'LIVE'}
+        <span style="font-size:10px; font-weight:700; padding:2px 8px; border-radius:4px; background:${net !== null ? (bull ? 'rgba(0,208,158,0.15)' : 'rgba(251,54,64,0.15)') : 'transparent'}; color:${net !== null ? (bull ? 'var(--green)' : 'var(--red)') : 'var(--t4)'};">
+          ${net !== null ? (bull ? 'NET LONG' : 'NET SHORT') : 'LIVE'}
         </span>
       </td>
-    </tr>\`;
+    </tr>`;
   }).join('');
 }
 
@@ -2195,8 +2197,8 @@ async function fetchStkFnoRecent() {
   statusEl.innerText = 'Fetching recent 90-day data from NSE…';
   const histUrl = 'https://www.nseindia.com/api/historicalParticipant-OI-drv?instrumentType=FUTSTK&dataType=historical';
   const proxies = [
-    \`https://corsproxy.io/?\${encodeURIComponent(histUrl)}\`,
-    \`https://api.allorigins.win/get?url=\${encodeURIComponent(histUrl)}\`,
+    `https://corsproxy.io/?${encodeURIComponent(histUrl)}`,
+    `https://api.allorigins.win/get?url=${encodeURIComponent(histUrl)}`,
   ];
   let rows = [];
   for (const proxyUrl of proxies) {
@@ -2221,7 +2223,7 @@ async function fetchStkFnoRecent() {
   if (rows.length === 0) {
     statusEl.innerText = 'NSE historical API unavailable via CORS proxy. Showing annual data only.';
   } else {
-    statusEl.innerText = \`Showing \${rows.length} sessions · Source: NSE participant OI\`;
+    statusEl.innerText = `Showing ${rows.length} sessions · Source: NSE participant OI`;
   }
   renderStkFnoRecentChart(rows);
 }
@@ -2257,12 +2259,12 @@ function renderStkFnoRecentChart(rows) {
   });
   document.getElementById('stkFnoRecentBody').innerHTML = rows.map(r => {
     const bull = r.net >= 0;
-    return \`<tr style="border-bottom:1px solid var(--l2);">
-      <td style="padding:6px 8px; color:var(--t2);">\${r.date}</td>
-      <td style="padding:6px 8px; text-align:right; color:var(--green);">\${r.long ? Math.round(r.long).toLocaleString('en-IN') : '—'}</td>
-      <td style="padding:6px 8px; text-align:right; color:var(--red);">\${r.short ? Math.round(r.short).toLocaleString('en-IN') : '—'}</td>
-      <td style="padding:6px 8px; text-align:right; font-weight:700; color:\${bull ? 'var(--green)' : 'var(--red)'};">\${(bull ? '+' : '') + Math.round(r.net).toLocaleString('en-IN')}</td>
-    </tr>\`;
+    return `<tr style="border-bottom:1px solid var(--l2);">
+      <td style="padding:6px 8px; color:var(--t2);">${r.date}</td>
+      <td style="padding:6px 8px; text-align:right; color:var(--green);">${r.long ? Math.round(r.long).toLocaleString('en-IN') : '—'}</td>
+      <td style="padding:6px 8px; text-align:right; color:var(--red);">${r.short ? Math.round(r.short).toLocaleString('en-IN') : '—'}</td>
+      <td style="padding:6px 8px; text-align:right; font-weight:700; color:${bull ? 'var(--green)' : 'var(--red)'};">${(bull ? '+' : '') + Math.round(r.net).toLocaleString('en-IN')}</td>
+    </tr>`;
   }).join('');
 }
 
@@ -2354,17 +2356,17 @@ function renderCallAnnualPanel() {
   document.getElementById('callAnnualBody').innerHTML = [...callAnnualHistory].reverse().map(r => {
     const net = r.long !== null ? r.long - r.short : null;
     const bull = net !== null && net >= 0;
-    return \`<tr style="border-bottom:1px solid var(--l2);">
-      <td style="padding:7px 8px; font-weight:700; color:var(--t1);">\${r.y}</td>
-      <td style="padding:7px 8px; text-align:right; color:var(--green);">\${r.long !== null ? Math.round(r.long).toLocaleString('en-IN') : '—'}</td>
-      <td style="padding:7px 8px; text-align:right; color:var(--red);">\${r.short !== null ? Math.round(r.short).toLocaleString('en-IN') : '—'}</td>
-      <td style="padding:7px 8px; text-align:right; font-weight:800; color:\${net !== null ? (bull ? 'var(--green)' : 'var(--red)') : 'var(--t4)'};">\${net !== null ? (bull ? '+' : '') + Math.round(net).toLocaleString('en-IN') : '—'}</td>
+    return `<tr style="border-bottom:1px solid var(--l2);">
+      <td style="padding:7px 8px; font-weight:700; color:var(--t1);">${r.y}</td>
+      <td style="padding:7px 8px; text-align:right; color:var(--green);">${r.long !== null ? Math.round(r.long).toLocaleString('en-IN') : '—'}</td>
+      <td style="padding:7px 8px; text-align:right; color:var(--red);">${r.short !== null ? Math.round(r.short).toLocaleString('en-IN') : '—'}</td>
+      <td style="padding:7px 8px; text-align:right; font-weight:800; color:${net !== null ? (bull ? 'var(--green)' : 'var(--red)') : 'var(--t4)'};">${net !== null ? (bull ? '+' : '') + Math.round(net).toLocaleString('en-IN') : '—'}</td>
       <td style="padding:7px 8px; text-align:right;">
-        <span style="font-size:10px; font-weight:700; padding:2px 8px; border-radius:4px; background:\${net !== null ? (bull ? 'rgba(29,158,117,0.15)' : 'rgba(251,54,64,0.15)') : 'transparent'}; color:\${net !== null ? (bull ? '#1D9E75' : 'var(--red)') : 'var(--t4)'};">
-          \${net !== null ? (bull ? 'CALL BUYING' : 'CALL WRITING') : 'LIVE'}
+        <span style="font-size:10px; font-weight:700; padding:2px 8px; border-radius:4px; background:${net !== null ? (bull ? 'rgba(29,158,117,0.15)' : 'rgba(251,54,64,0.15)') : 'transparent'}; color:${net !== null ? (bull ? '#1D9E75' : 'var(--red)') : 'var(--t4)'};">
+          ${net !== null ? (bull ? 'CALL BUYING' : 'CALL WRITING') : 'LIVE'}
         </span>
       </td>
-    </tr>\`;
+    </tr>`;
   }).join('');
 }
 
@@ -2373,8 +2375,8 @@ async function fetchCallRecent() {
   statusEl.innerText = 'Fetching recent 90-day data from NSE…';
   const histUrl = 'https://www.nseindia.com/api/historicalParticipant-OI-drv?instrumentType=OPTIDX&dataType=historical';
   const proxies = [
-    \`https://corsproxy.io/?\${encodeURIComponent(histUrl)}\`,
-    \`https://api.allorigins.win/get?url=\${encodeURIComponent(histUrl)}\`,
+    `https://corsproxy.io/?${encodeURIComponent(histUrl)}`,
+    `https://api.allorigins.win/get?url=${encodeURIComponent(histUrl)}`,
   ];
   let rows = [];
   for (const proxyUrl of proxies) {
@@ -2396,7 +2398,7 @@ async function fetchCallRecent() {
     } catch(e) {}
   }
   callRecentFetched = true;
-  statusEl.innerText = rows.length > 0 ? \`Showing \${rows.length} sessions · Source: NSE participant OI\` : 'NSE historical API unavailable via CORS proxy. Showing annual data only.';
+  statusEl.innerText = rows.length > 0 ? `Showing ${rows.length} sessions · Source: NSE participant OI` : 'NSE historical API unavailable via CORS proxy. Showing annual data only.';
   renderCallRecentChart(rows);
 }
 
@@ -2430,12 +2432,12 @@ function renderCallRecentChart(rows) {
   });
   document.getElementById('callRecentBody').innerHTML = rows.map(r => {
     const bull = r.net >= 0;
-    return \`<tr style="border-bottom:1px solid var(--l2);">
-      <td style="padding:6px 8px; color:var(--t2);">\${r.date}</td>
-      <td style="padding:6px 8px; text-align:right; color:var(--green);">\${r.long ? Math.round(r.long).toLocaleString('en-IN') : '—'}</td>
-      <td style="padding:6px 8px; text-align:right; color:var(--red);">\${r.short ? Math.round(r.short).toLocaleString('en-IN') : '—'}</td>
-      <td style="padding:6px 8px; text-align:right; font-weight:700; color:\${bull ? 'var(--green)' : 'var(--red)'};">\${(bull ? '+' : '') + Math.round(r.net).toLocaleString('en-IN')}</td>
-    </tr>\`;
+    return `<tr style="border-bottom:1px solid var(--l2);">
+      <td style="padding:6px 8px; color:var(--t2);">${r.date}</td>
+      <td style="padding:6px 8px; text-align:right; color:var(--green);">${r.long ? Math.round(r.long).toLocaleString('en-IN') : '—'}</td>
+      <td style="padding:6px 8px; text-align:right; color:var(--red);">${r.short ? Math.round(r.short).toLocaleString('en-IN') : '—'}</td>
+      <td style="padding:6px 8px; text-align:right; font-weight:700; color:${bull ? 'var(--green)' : 'var(--red)'};">${(bull ? '+' : '') + Math.round(r.net).toLocaleString('en-IN')}</td>
+    </tr>`;
   }).join('');
 }
 
