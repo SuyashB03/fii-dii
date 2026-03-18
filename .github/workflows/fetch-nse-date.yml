@@ -21,8 +21,106 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Fetch NSE FII/DII data
-        run: python scripts/fetch_nse.py
+      - name: Fetch NSE FII/DII + F&O data
+        run: |
+          python3 << 'PYEOF'
+          import requests, json, os, time
+          from datetime import datetime
+
+          HEADERS = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Referer': 'https://www.nseindia.com/',
+          }
+
+          session = requests.Session()
+          print("Getting NSE session cookies...")
+          session.get('https://www.nseindia.com', headers=HEADERS, timeout=15)
+          time.sleep(2)
+
+          # ── Cash Market FII/DII ──
+          print("Fetching cash market data...")
+          resp = session.get('https://www.nseindia.com/api/fiidiiTradeReact', headers=HEADERS, timeout=15)
+          resp.raise_for_status()
+          raw = resp.json()
+
+          result = {
+            'date': '', 'fii_buy': 0.0, 'fii_sell': 0.0, 'fii_net': 0.0,
+            'dii_buy': 0.0, 'dii_sell': 0.0, 'dii_net': 0.0,
+            'fetched_at': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+          }
+          for row in raw:
+            cat = (row.get('category') or '').upper()
+            if 'FII' in cat or 'FPI' in cat:
+              result['fii_buy'] = float(row.get('buyValue') or 0)
+              result['fii_sell'] = float(row.get('sellValue') or 0)
+              result['fii_net'] = float(row.get('netValue') or 0)
+              result['date'] = row.get('date') or ''
+            elif 'DII' in cat:
+              result['dii_buy'] = float(row.get('buyValue') or 0)
+              result['dii_sell'] = float(row.get('sellValue') or 0)
+              result['dii_net'] = float(row.get('netValue') or 0)
+
+          print(f"Cash: Date={result['date']} FII={result['fii_net']} DII={result['dii_net']}")
+
+          # ── F&O Derivatives ──
+          print("Fetching F&O participant data...")
+          time.sleep(1)
+          try:
+            fno_resp = session.get('https://www.nseindia.com/api/fiiDerivativeTradeReact', headers=HEADERS, timeout=15)
+            fno_resp.raise_for_status()
+            fno_raw = fno_resp.json()
+            fno_data = fno_raw.get('data', fno_raw) if isinstance(fno_raw, dict) else fno_raw
+
+            def find_participant(data, keyword):
+              for r in data:
+                cat = (r.get('clientType') or r.get('category') or r.get('participant') or '').upper()
+                if keyword in cat:
+                  return r
+              return None
+
+            def g(row, *keys):
+              if not row:
+                return 0.0
+              for k in keys:
+                v = row.get(k)
+                if v is not None:
+                  try:
+                    return float(v)
+                  except:
+                    pass
+              return 0.0
+
+            fii_row = find_participant(fno_data, 'FII') or find_participant(fno_data, 'FPI') or find_participant(fno_data, 'FOREIGN')
+            dii_row = find_participant(fno_data, 'DII') or find_participant(fno_data, 'MF') or find_participant(fno_data, 'MUTUAL')
+
+            if fii_row:
+              result['fii_idx_fut_long']    = g(fii_row, 'futureIndexLong', 'indexFutLong', 'futIdxLong')
+              result['fii_idx_fut_short']   = g(fii_row, 'futureIndexShort', 'indexFutShort', 'futIdxShort')
+              result['fii_stk_fut_long']    = g(fii_row, 'futureStockLong', 'stockFutLong')
+              result['fii_stk_fut_short']   = g(fii_row, 'futureStockShort', 'stockFutShort')
+              result['fii_idx_call_long']   = g(fii_row, 'optionIndexCallLong', 'idxCallLong')
+              result['fii_idx_call_short']  = g(fii_row, 'optionIndexCallShort', 'idxCallShort')
+              result['fii_idx_put_long']    = g(fii_row, 'optionIndexPutLong', 'idxPutLong')
+              result['fii_idx_put_short']   = g(fii_row, 'optionIndexPutShort', 'idxPutShort')
+              print(f"FII F&O: IdxFut L={result['fii_idx_fut_long']} S={result['fii_idx_fut_short']}")
+
+            if dii_row:
+              result['dii_idx_fut_long']    = g(dii_row, 'futureIndexLong', 'indexFutLong')
+              result['dii_idx_fut_short']   = g(dii_row, 'futureIndexShort', 'indexFutShort')
+              result['dii_stk_fut_long']    = g(dii_row, 'futureStockLong', 'stockFutLong')
+              result['dii_stk_fut_short']   = g(dii_row, 'futureStockShort', 'stockFutShort')
+              print(f"DII F&O: IdxFut L={result['dii_idx_fut_long']} S={result['dii_idx_fut_short']}")
+
+          except Exception as e:
+            print(f"F&O fetch failed (non-critical): {e}")
+
+          os.makedirs('data', exist_ok=True)
+          with open('data/latest.json', 'w') as f:
+            json.dump(result, f, indent=2)
+          print("Saved to data/latest.json")
+          PYEOF
 
       - name: Commit and push if data changed
         run: |
