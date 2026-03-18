@@ -1562,6 +1562,21 @@ async function injectLiveRow(d) {
   } else {
     dailyData[0] = { ...dailyData[0], ...d, d: d.date, fb: d.fii_buy, fs: d.fii_sell, fn: d.fii_net, db: d.dii_buy, ds: d.dii_sell, dn: d.dii_net };
   }
+  // Also inject F&O data if present in the JSON
+  if (d.fii_idx_fut_long !== undefined) {
+    dailyData[0].fii_idx_fut_long   = d.fii_idx_fut_long;
+    dailyData[0].fii_idx_fut_short  = d.fii_idx_fut_short;
+    dailyData[0].fii_stk_fut_long   = d.fii_stk_fut_long;
+    dailyData[0].fii_stk_fut_short  = d.fii_stk_fut_short;
+    dailyData[0].fii_idx_call_long  = d.fii_idx_call_long;
+    dailyData[0].fii_idx_call_short = d.fii_idx_call_short;
+    dailyData[0].fii_idx_put_long   = d.fii_idx_put_long;
+    dailyData[0].fii_idx_put_short  = d.fii_idx_put_short;
+    dailyData[0].dii_idx_fut_long   = d.dii_idx_fut_long;
+    dailyData[0].dii_idx_fut_short  = d.dii_idx_fut_short;
+    dailyData[0].dii_stk_fut_long   = d.dii_stk_fut_long;
+    dailyData[0].dii_stk_fut_short  = d.dii_stk_fut_short;
+  }
   if (sPill) sPill.className = 'status-pill live';
   if (sTxt)  sTxt.innerHTML  = `LIVE &bull; ${new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})}`;
   renderDashboard();
