@@ -35,13 +35,14 @@ jobs:
           }
 
           session = requests.Session()
-          print("Getting NSE session cookies...")
-          session.get('https://www.nseindia.com', headers=HEADERS, timeout=15)
-          time.sleep(2)
+          print("Step 1: Getting NSE session cookies...")
+          r = session.get('https://www.nseindia.com', headers=HEADERS, timeout=15)
+          print(f"Homepage status: {r.status_code}")
+          time.sleep(3)
 
-          # ── Cash Market FII/DII ──
-          print("Fetching cash market data...")
+          print("\nStep 2: Fetching cash market FII/DII data...")
           resp = session.get('https://www.nseindia.com/api/fiidiiTradeReact', headers=HEADERS, timeout=15)
+          print(f"Cash market status: {resp.status_code}")
           resp.raise_for_status()
           raw = resp.json()
 
@@ -64,62 +65,78 @@ jobs:
 
           print(f"Cash: Date={result['date']} FII={result['fii_net']} DII={result['dii_net']}")
 
-          # ── F&O Derivatives ──
-          print("Fetching F&O participant data...")
-          time.sleep(1)
-          try:
-            fno_resp = session.get('https://www.nseindia.com/api/fiiDerivativeTradeReact', headers=HEADERS, timeout=15)
-            fno_resp.raise_for_status()
-            fno_raw = fno_resp.json()
-            fno_data = fno_raw.get('data', fno_raw) if isinstance(fno_raw, dict) else fno_raw
+          print("\nStep 3: Fetching F&O data...")
+          time.sleep(2)
+          fno_resp = session.get('https://www.nseindia.com/api/fiiDerivativeTradeReact', headers=HEADERS, timeout=15)
+          print(f"F&O status: {fno_resp.status_code}")
 
-            def find_participant(data, keyword):
-              for r in data:
-                cat = (r.get('clientType') or r.get('category') or r.get('participant') or '').upper()
-                if keyword in cat:
-                  return r
-              return None
+          if fno_resp.status_code == 200:
+            fno_json = fno_resp.json()
+            print(f"F&O type: {type(fno_json)}")
+            if isinstance(fno_json, dict):
+              print(f"F&O keys: {list(fno_json.keys())}")
+              data = fno_json.get('data', fno_json.get('FIIData', list(fno_json.values())[0] if fno_json else []))
+            elif isinstance(fno_json, list):
+              data = fno_json
+            else:
+              data = []
 
-            def g(row, *keys):
-              if not row:
+            print(f"F&O rows: {len(data)}")
+            if len(data) > 0:
+              print(f"Row 0: {json.dumps(data[0])[:600]}")
+
+              fii_row = None
+              dii_row = None
+              for row in data:
+                if not isinstance(row, dict): continue
+                cat = ''
+                for key in ['clientType','category','participant','clienttype','Client Type']:
+                  if row.get(key):
+                    cat = str(row[key]).upper()
+                    break
+                print(f"  cat='{cat}'")
+                if any(k in cat for k in ['FII','FPI','FOREIGN']):
+                  fii_row = row
+                elif any(k in cat for k in ['DII','MF','MUTUAL','DOMESTIC','INSURANCE']):
+                  dii_row = row
+
+              def gv(row, *keys):
+                if not row: return 0.0
+                for k in keys:
+                  for attempt in [k, k.lower(), k[0].lower()+k[1:] if k else k]:
+                    v = row.get(attempt)
+                    if v not in (None,'',0,'0','-','--'):
+                      try: return float(str(v).replace(',','').replace(' ',''))
+                      except: pass
                 return 0.0
-              for k in keys:
-                v = row.get(k)
-                if v is not None:
-                  try:
-                    return float(v)
-                  except:
-                    pass
-              return 0.0
 
-            fii_row = find_participant(fno_data, 'FII') or find_participant(fno_data, 'FPI') or find_participant(fno_data, 'FOREIGN')
-            dii_row = find_participant(fno_data, 'DII') or find_participant(fno_data, 'MF') or find_participant(fno_data, 'MUTUAL')
+              if fii_row:
+                print(f"\nFII keys: {list(fii_row.keys())}")
+                result['fii_idx_fut_long']   = gv(fii_row,'futureIndexLong','indexFutLong','futIdxLong','FutureIndexLong','futIdxLongContracts','fut_index_long')
+                result['fii_idx_fut_short']  = gv(fii_row,'futureIndexShort','indexFutShort','futIdxShort','FutureIndexShort','futIdxShortContracts','fut_index_short')
+                result['fii_stk_fut_long']   = gv(fii_row,'futureStockLong','stockFutLong','FutureStockLong','stkFutLongContracts','fut_stock_long')
+                result['fii_stk_fut_short']  = gv(fii_row,'futureStockShort','stockFutShort','FutureStockShort','stkFutShortContracts','fut_stock_short')
+                result['fii_idx_call_long']  = gv(fii_row,'optionIndexCallLong','idxCallLong','callLong','OptionIndexCallLong','opt_idx_call_long')
+                result['fii_idx_call_short'] = gv(fii_row,'optionIndexCallShort','idxCallShort','callShort','OptionIndexCallShort','opt_idx_call_short')
+                result['fii_idx_put_long']   = gv(fii_row,'optionIndexPutLong','idxPutLong','putLong','OptionIndexPutLong','opt_idx_put_long')
+                result['fii_idx_put_short']  = gv(fii_row,'optionIndexPutShort','idxPutShort','putShort','OptionIndexPutShort','opt_idx_put_short')
+                print(f"FII IdxFut L={result['fii_idx_fut_long']} S={result['fii_idx_fut_short']}")
+                print(f"FII Calls  L={result['fii_idx_call_long']} S={result['fii_idx_call_short']}")
+                print(f"FII Puts   L={result['fii_idx_put_long']} S={result['fii_idx_put_short']}")
 
-            if fii_row:
-              result['fii_idx_fut_long']    = g(fii_row, 'futureIndexLong', 'indexFutLong', 'futIdxLong')
-              result['fii_idx_fut_short']   = g(fii_row, 'futureIndexShort', 'indexFutShort', 'futIdxShort')
-              result['fii_stk_fut_long']    = g(fii_row, 'futureStockLong', 'stockFutLong')
-              result['fii_stk_fut_short']   = g(fii_row, 'futureStockShort', 'stockFutShort')
-              result['fii_idx_call_long']   = g(fii_row, 'optionIndexCallLong', 'idxCallLong')
-              result['fii_idx_call_short']  = g(fii_row, 'optionIndexCallShort', 'idxCallShort')
-              result['fii_idx_put_long']    = g(fii_row, 'optionIndexPutLong', 'idxPutLong')
-              result['fii_idx_put_short']   = g(fii_row, 'optionIndexPutShort', 'idxPutShort')
-              print(f"FII F&O: IdxFut L={result['fii_idx_fut_long']} S={result['fii_idx_fut_short']}")
-
-            if dii_row:
-              result['dii_idx_fut_long']    = g(dii_row, 'futureIndexLong', 'indexFutLong')
-              result['dii_idx_fut_short']   = g(dii_row, 'futureIndexShort', 'indexFutShort')
-              result['dii_stk_fut_long']    = g(dii_row, 'futureStockLong', 'stockFutLong')
-              result['dii_stk_fut_short']   = g(dii_row, 'futureStockShort', 'stockFutShort')
-              print(f"DII F&O: IdxFut L={result['dii_idx_fut_long']} S={result['dii_idx_fut_short']}")
-
-          except Exception as e:
-            print(f"F&O fetch failed (non-critical): {e}")
+              if dii_row:
+                result['dii_idx_fut_long']  = gv(dii_row,'futureIndexLong','indexFutLong','FutureIndexLong')
+                result['dii_idx_fut_short'] = gv(dii_row,'futureIndexShort','indexFutShort','FutureIndexShort')
+                result['dii_stk_fut_long']  = gv(dii_row,'futureStockLong','stockFutLong','FutureStockLong')
+                result['dii_stk_fut_short'] = gv(dii_row,'futureStockShort','stockFutShort','FutureStockShort')
+                print(f"DII IdxFut L={result['dii_idx_fut_long']} S={result['dii_idx_fut_short']}")
+          else:
+            print(f"F&O failed: {fno_resp.text[:400]}")
 
           os.makedirs('data', exist_ok=True)
           with open('data/latest.json', 'w') as f:
             json.dump(result, f, indent=2)
-          print("Saved to data/latest.json")
+          print(f"\nSaved. Has F&O: {'fii_idx_fut_long' in result and result['fii_idx_fut_long'] > 0}")
           PYEOF
 
       - name: Commit and push if data changed
