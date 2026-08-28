@@ -1,10 +1,10 @@
 {
-  "date": "27-Aug-2026",
-  "fii_buy": 15276.94,
-  "fii_sell": 15575.2,
-  "fii_net": -298.26,
-  "dii_buy": 19605.6,
-  "dii_sell": 14628.43,
-  "dii_net": 4977.17,
-  "fetched_at": "2026-08-27T20:52:11Z"
+  "date": "28-Aug-2026",
+  "fii_buy": 13263.62,
+  "fii_sell": 18303.42,
+  "fii_net": -5039.8,
+  "dii_buy": 16539.38,
+  "dii_sell": 11355.45,
+  "dii_net": 5183.93,
+  "fetched_at": "2026-08-28T21:16:58Z"
 }
